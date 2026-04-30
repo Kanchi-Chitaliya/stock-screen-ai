@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../api.js'
 import { TrendingUp, TrendingDown, Minus, ExternalLink, RefreshCw, Newspaper } from 'lucide-react'
 
@@ -104,10 +104,16 @@ function ArticleCard({ article }) {
   )
 }
 
-export default function SentimentAnalysis({ ticker }) {
-  const [result, setResult]   = useState(null)
-  const [loading, setLoading] = useState(false)
+export default function SentimentAnalysis({ ticker, initialData = null, initialLoading = false }) {
+  const [result, setResult]   = useState(initialData)
+  const [loading, setLoading] = useState(initialLoading && !initialData)
   const [error, setError]     = useState(null)
+
+  // Sync if parent finishes loading after mount
+  useEffect(() => {
+    if (initialData && !result) setResult(initialData)
+    if (!initialData && !initialLoading && !result) setLoading(false)
+  }, [initialData, initialLoading])
 
   const run = () => {
     setLoading(true); setError(null); setResult(null)

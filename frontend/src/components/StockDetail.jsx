@@ -161,6 +161,47 @@ function FinancialsTable({ data }) {
   )
 }
 
+// ── Compact sentiment summary card ────────────────────────────────────
+const SCORE_COLOR = score =>
+  score >= 7 ? 'text-emerald-400' : score >= 5 ? 'text-yellow-400' : 'text-red-400'
+const SCORE_BG = score =>
+  score >= 7 ? 'border-emerald-800/40 bg-emerald-950/20' : score >= 5 ? 'border-yellow-800/40 bg-yellow-950/20' : 'border-red-800/40 bg-red-950/20'
+
+function SentimentCard({ data, loading, onViewFull }) {
+  if (loading) return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex items-center gap-3">
+      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+      <span className="text-xs text-gray-500">Analyzing live news sentiment…</span>
+    </div>
+  )
+  if (!data?.analysis) return null
+  const a     = data.analysis
+  const score = a.sentiment_score ?? 5
+  const tone  = { euphoric: '🚀', optimistic: '📈', cautious: '⚖️', fearful: '😰', panic: '🔴' }[a.investor_tone] ?? '📊'
+  return (
+    <div className={`border rounded-xl px-5 py-3.5 flex items-start gap-4 flex-wrap ${SCORE_BG(score)}`}>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className={`text-2xl font-bold font-mono ${SCORE_COLOR(score)}`}>{score}<span className="text-sm text-gray-500">/10</span></span>
+        <div>
+          <div className={`text-sm font-semibold ${SCORE_COLOR(score)}`}>{a.sentiment_label}</div>
+          <div className="text-xs text-gray-500 capitalize">{tone} {a.investor_tone} tone</div>
+        </div>
+      </div>
+      <div className="flex-1 min-w-[180px]">
+        {a.one_line_summary && (
+          <p className="text-sm text-gray-300 italic leading-snug">"{a.one_line_summary}"</p>
+        )}
+        {a.what_is_driving_the_stock?.[0] && (
+          <p className="text-xs text-gray-500 mt-1">▸ {a.what_is_driving_the_stock[0]}</p>
+        )}
+      </div>
+      <button onClick={onViewFull} className="text-xs text-blue-400 hover:text-blue-300 shrink-0 self-center">
+        Full analysis →
+      </button>
+    </div>
+  )
+}
+
 export default function StockDetail({ ticker, onBack }) {
   const [stock, setStock] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -169,6 +210,8 @@ export default function StockDetail({ ticker, onBack }) {
   const [sectionTab, setSectionTab] = useState('overview')
   const [finMode, setFinMode] = useState('annual')
   const [refreshing, setRefreshing] = useState(false)
+  const [sentimentData, setSentimentData] = useState(null)
+  const [sentimentLoading, setSentimentLoading] = useState(false)
 
   const loadStock = (bust = false) => {
     setLoading(!bust); setRefreshing(bust); setError(null)
@@ -180,7 +223,17 @@ export default function StockDetail({ ticker, onBack }) {
     }
   }
 
-  useEffect(() => { setStock(null); loadStock(false) }, [ticker])
+  useEffect(() => { setStock(null); setSentimentData(null); loadStock(false) }, [ticker])
+
+  // Auto-fetch sentiment in the background after stock data loads
+  useEffect(() => {
+    if (!stock) return
+    setSentimentLoading(true)
+    api.getSentiment(ticker)
+      .then(setSentimentData)
+      .catch(() => {})
+      .finally(() => setSentimentLoading(false))
+  }, [stock?.symbol])
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -352,6 +405,13 @@ export default function StockDetail({ ticker, onBack }) {
         <MetricTile label="Beta (Market Sensitivity)"  value={fmt(stock.beta, { decimals: 2 })} />
       </div>
 
+      {/* Inline sentiment summary */}
+      <SentimentCard
+        data={sentimentData}
+        loading={sentimentLoading}
+        onViewFull={() => setSectionTab('sentiment')}
+      />
+
       {/* Section tabs */}
       <div className="flex gap-1 bg-gray-900 p-1 rounded-xl border border-gray-800 w-fit flex-wrap">
         {SECTION_TABS.map(t => (
@@ -456,7 +516,7 @@ export default function StockDetail({ ticker, onBack }) {
 
       {/* Market & Investor Sentiment */}
       {sectionTab === 'sentiment' && (
-        <SentimentAnalysis ticker={stock.symbol} />
+        <SentimentAnalysis ticker={stock.symbol} initialData={sentimentData} initialLoading={sentimentLoading} />
       )}
 
     </div>
