@@ -167,11 +167,17 @@ const SCORE_COLOR = score =>
 const SCORE_BG = score =>
   score >= 7 ? 'border-emerald-800/40 bg-emerald-950/20' : score >= 5 ? 'border-yellow-800/40 bg-yellow-950/20' : 'border-red-800/40 bg-red-950/20'
 
-function SentimentCard({ data, loading, onViewFull }) {
+function SentimentCard({ data, loading, error, onViewFull, onRetry }) {
   if (loading) return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex items-center gap-3">
       <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
       <span className="text-xs text-gray-500">Analyzing live news sentiment…</span>
+    </div>
+  )
+  if (error) return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex items-center justify-between gap-3">
+      <span className="text-xs text-gray-500">Sentiment: {error}</span>
+      <button onClick={onRetry} className="text-xs text-blue-400 hover:text-blue-300 shrink-0">Retry</button>
     </div>
   )
   if (!data?.analysis) return null
@@ -211,29 +217,32 @@ export default function StockDetail({ ticker, onBack }) {
   const [finMode, setFinMode] = useState('annual')
   const [refreshing, setRefreshing] = useState(false)
   const [sentimentData, setSentimentData] = useState(null)
-  const [sentimentLoading, setSentimentLoading] = useState(false)
+  const [sentimentLoading, setSentimentLoading] = useState(true)
+  const [sentimentError, setSentimentError] = useState(null)
+
+  const fetchSentiment = (t) => {
+    setSentimentData(null); setSentimentError(null); setSentimentLoading(true)
+    api.getSentiment(t)
+      .then(setSentimentData)
+      .catch(e => setSentimentError(e.message || 'Failed to load sentiment'))
+      .finally(() => setSentimentLoading(false))
+  }
 
   const loadStock = (bust = false) => {
     setLoading(!bust); setRefreshing(bust); setError(null)
-    const fetch = () => api.getStock(ticker).then(setStock).catch(e => setError(e.message)).finally(() => { setLoading(false); setRefreshing(false) })
+    const doFetch = () => api.getStock(ticker).then(setStock).catch(e => setError(e.message)).finally(() => { setLoading(false); setRefreshing(false) })
     if (bust) {
-      api.clearTickerCache(ticker).finally(fetch)
+      api.clearTickerCache(ticker).finally(doFetch)
     } else {
-      fetch()
+      doFetch()
     }
   }
 
-  useEffect(() => { setStock(null); setSentimentData(null); loadStock(false) }, [ticker])
-
-  // Auto-fetch sentiment in the background after stock data loads
   useEffect(() => {
-    if (!stock) return
-    setSentimentLoading(true)
-    api.getSentiment(ticker)
-      .then(setSentimentData)
-      .catch(() => {})
-      .finally(() => setSentimentLoading(false))
-  }, [stock?.symbol])
+    setStock(null); setSentimentData(null)
+    loadStock(false)
+    fetchSentiment(ticker)
+  }, [ticker])
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -409,7 +418,9 @@ export default function StockDetail({ ticker, onBack }) {
       <SentimentCard
         data={sentimentData}
         loading={sentimentLoading}
+        error={sentimentError}
         onViewFull={() => setSectionTab('sentiment')}
+        onRetry={() => fetchSentiment(ticker)}
       />
 
       {/* Section tabs */}
@@ -516,7 +527,7 @@ export default function StockDetail({ ticker, onBack }) {
 
       {/* Market & Investor Sentiment */}
       {sectionTab === 'sentiment' && (
-        <SentimentAnalysis ticker={stock.symbol} initialData={sentimentData} initialLoading={sentimentLoading} />
+        <SentimentAnalysis ticker={stock.symbol} initialData={sentimentData} initialLoading={sentimentLoading} initialError={sentimentError} />
       )}
 
     </div>

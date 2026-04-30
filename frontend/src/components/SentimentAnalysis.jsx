@@ -104,16 +104,17 @@ function ArticleCard({ article }) {
   )
 }
 
-export default function SentimentAnalysis({ ticker, initialData = null, initialLoading = false }) {
+export default function SentimentAnalysis({ ticker, initialData = null, initialLoading = false, initialError = null }) {
   const [result, setResult]   = useState(initialData)
   const [loading, setLoading] = useState(initialLoading && !initialData)
-  const [error, setError]     = useState(null)
+  const [error, setError]     = useState(initialError)
 
-  // Sync if parent finishes loading after mount
+  // Sync when parent finishes fetching after this tab was opened
   useEffect(() => {
-    if (initialData && !result) setResult(initialData)
-    if (!initialData && !initialLoading && !result) setLoading(false)
-  }, [initialData, initialLoading])
+    if (initialData)  { setResult(initialData); setLoading(false) }
+    if (initialError) { setError(initialError); setLoading(false) }
+    if (!initialData && !initialError && !initialLoading) setLoading(false)
+  }, [initialData, initialError, initialLoading])
 
   const run = () => {
     setLoading(true); setError(null); setResult(null)
