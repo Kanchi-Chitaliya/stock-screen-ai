@@ -518,15 +518,18 @@ class StockDataFetcher:
         return result
 
     def _earnings_history(self, tk: yf.Ticker) -> list:
-        """EPS actual vs estimate from earnings_dates. Newest first, up to 12 entries."""
+        """EPS actual vs estimate from earnings dates. Newest first, up to 20 entries."""
         history = []
         try:
-            ed = tk.earnings_dates
+            try:
+                ed = tk.get_earnings_dates(limit=20)
+            except Exception:
+                ed = tk.earnings_dates
             if ed is None or ed.empty:
                 return history
-            for dt, row in ed.head(12).iterrows():
-                eps_est = _safe(row.get("EPS Estimate"))
-                eps_act = _safe(row.get("Reported EPS"))
+            for dt, row in ed.iterrows():
+                eps_est  = _safe(row.get("EPS Estimate"))
+                eps_act  = _safe(row.get("Reported EPS"))
                 surprise = _safe(row.get("Surprise(%)"))
                 is_future = eps_act is None
                 history.append({

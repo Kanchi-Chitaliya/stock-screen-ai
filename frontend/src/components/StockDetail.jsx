@@ -9,7 +9,7 @@ import {
   PriceChart, RevenueChart, MarginsChart, FCFChart, DebtChart, EPSChart,
   ROICChart, SharesChart,
 } from './MetricCharts.jsx'
-import { ArrowLeft, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react'
 
 const CHART_TABS = [
   { key: 'price',    label: 'Price' },
@@ -168,14 +168,19 @@ export default function StockDetail({ ticker, onBack }) {
   const [chartTab, setChartTab] = useState('price')
   const [sectionTab, setSectionTab] = useState('overview')
   const [finMode, setFinMode] = useState('annual')
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
-    setLoading(true); setError(null); setStock(null)
-    api.getStock(ticker)
-      .then(setStock)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [ticker])
+  const loadStock = (bust = false) => {
+    setLoading(!bust); setRefreshing(bust); setError(null)
+    const fetch = () => api.getStock(ticker).then(setStock).catch(e => setError(e.message)).finally(() => { setLoading(false); setRefreshing(false) })
+    if (bust) {
+      api.clearTickerCache(ticker).finally(fetch)
+    } else {
+      fetch()
+    }
+  }
+
+  useEffect(() => { setStock(null); loadStock(false) }, [ticker])
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -203,13 +208,26 @@ export default function StockDetail({ ticker, onBack }) {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
-      >
-        <ArrowLeft size={16} /> Back to Screener
-      </button>
+      {/* Breadcrumb + refresh */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+        >
+          <ArrowLeft size={16} /> Back to Screener
+        </button>
+        <button
+          onClick={() => loadStock(true)}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+          title="Clear cache and reload fresh data"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          {stock?._cached_age != null
+            ? `Data ${Math.round(stock._cached_age / 60)}m old · Refresh`
+            : 'Refresh'}
+        </button>
+      </div>
 
       {/* Header */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">

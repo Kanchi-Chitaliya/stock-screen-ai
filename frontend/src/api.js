@@ -96,6 +96,12 @@ export const api = {
 
   getSentiment: (ticker) =>
     withRetry(() => fetchJSON(`${BASE}/sentiment/${ticker}`, { method: 'POST' })),
+
+  clearTickerCache: (ticker) =>
+    Promise.all([
+      fetchJSON(`${BASE}/cache?prefix=detail:${ticker}`, { method: 'DELETE' }),
+      fetchJSON(`${BASE}/cache?prefix=metrics:${ticker}`, { method: 'DELETE' }),
+    ]),
 }
 
 export function fmt(v, opts = {}) {
