@@ -40,12 +40,65 @@ function MetricTile({ label, value, color, sub }) {
   )
 }
 
-// Historical financials table
-function FinancialsTable({ annual }) {
-  if (!annual?.length) return (
+// ── Earnings beat/miss strip ───────────────────────────────────────────
+function EarningsStrip({ earnings }) {
+  if (!earnings?.length) return null
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        EPS — Actual vs Estimate (most recent first)
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {earnings.map((e, i) => {
+          const dt    = new Date(e.date)
+          const q     = Math.floor(dt.getMonth() / 3) + 1
+          const label = `Q${q} ${dt.getFullYear()}`
+          const { beat, is_future } = e
+          const border = is_future
+            ? 'border-yellow-700/50 bg-yellow-950/20'
+            : beat === true  ? 'border-emerald-700/40 bg-emerald-950/25'
+            : beat === false ? 'border-red-700/40 bg-red-950/25'
+            : 'border-gray-700 bg-gray-800/40'
+          return (
+            <div key={i} className={`shrink-0 w-[108px] border rounded-xl p-2.5 text-center ${border}`}>
+              <div className="text-xs text-gray-500 mb-1.5">{label}</div>
+              {is_future ? (
+                <>
+                  <div className="text-xs text-gray-600 mb-0.5">Est.</div>
+                  <div className="font-mono text-sm text-gray-200">
+                    {e.eps_estimate != null ? `$${e.eps_estimate.toFixed(2)}` : '—'}
+                  </div>
+                  <div className="text-xs text-yellow-400 mt-1.5 font-medium">Upcoming</div>
+                </>
+              ) : (
+                <>
+                  <div className={`font-mono text-base font-bold ${beat ? 'text-emerald-400' : beat === false ? 'text-red-400' : 'text-gray-200'}`}>
+                    {e.eps_actual != null ? `$${e.eps_actual.toFixed(2)}` : '—'}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    est. {e.eps_estimate != null ? `$${e.eps_estimate.toFixed(2)}` : '—'}
+                  </div>
+                  {e.surprise_pct != null && (
+                    <div className={`text-xs font-semibold mt-1 ${beat ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {beat ? '▲' : '▼'} {e.surprise_pct > 0 ? '+' : ''}{e.surprise_pct.toFixed(1)}%
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Historical financials table ────────────────────────────────────────
+function FinancialsTable({ data }) {
+  if (!data?.length) return (
     <div className="text-center py-12 text-gray-600 text-sm">No historical data available</div>
   )
-  const sorted = [...annual].sort((a, b) => String(a.period).localeCompare(String(b.period)))
+  const sorted = [...data].sort((a, b) => String(a.period).localeCompare(String(b.period)))
   const years = sorted.map(y => y.period)
 
   const rows = [
@@ -84,8 +137,8 @@ function FinancialsTable({ annual }) {
         <thead>
           <tr className="bg-gray-800/80">
             <th className="px-4 py-2.5 text-left text-gray-500 font-medium sticky left-0 bg-gray-800/80 min-w-[140px]">Metric</th>
-            {years.map(y => (
-              <th key={y} className="px-4 py-2.5 text-right text-gray-400 font-mono font-normal">{y}</th>
+            {sorted.map(y => (
+              <th key={y.period} className="px-4 py-2.5 text-right text-gray-400 font-mono font-normal">{y.period}</th>
             ))}
           </tr>
         </thead>
@@ -112,6 +165,7 @@ export default function StockDetail({ ticker, onBack }) {
   const [error, setError] = useState(null)
   const [chartTab, setChartTab] = useState('price')
   const [sectionTab, setSectionTab] = useState('overview')
+  const [finMode, setFinMode] = useState('annual')
 
   useEffect(() => {
     setLoading(true); setError(null); setStock(null)
@@ -327,11 +381,32 @@ export default function StockDetail({ ticker, onBack }) {
 
       {/* Financials table section */}
       {sectionTab === 'history' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
-            Annual Financial History
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-5">
+          {/* EPS beat/miss strip */}
+          <EarningsStrip earnings={stock.earnings_history} />
+
+          {/* Annual / Quarterly toggle */}
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Financial History
+            </div>
+            <div className="flex gap-1 bg-gray-800 p-1 rounded-lg">
+              {['annual', 'quarterly'].map(mode => (
+                <button key={mode} onClick={() => setFinMode(mode)}
+                  className={`px-3 py-1 text-xs rounded transition-colors font-medium capitalize ${
+                    finMode === mode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                  }`}>
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
-          <FinancialsTable annual={annual} />
+
+          <FinancialsTable
+            data={finMode === 'annual'
+              ? annual
+              : (stock.financial_history?.quarterly ?? [])}
+          />
         </div>
       )}
 

@@ -366,6 +366,7 @@ class StockDataFetcher:
                 price_history = []
 
             financial_history = self._financial_history(tk)
+            earnings_history  = self._earnings_history(tk)
 
             # Graham number
             eps = _safe(info.get("trailingEps"))
@@ -386,6 +387,7 @@ class StockDataFetcher:
                 "analyst_rec_key": info.get("recommendationKey", ""),
                 "price_history": price_history,
                 "financial_history": financial_history,
+                "earnings_history": earnings_history,
             }
             # ROIC fallback: use most recent historical ROIC if top-level is still None
             if result.get("roic") is None:
@@ -404,96 +406,140 @@ class StockDataFetcher:
     #  Historical financials helper                                       #
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    #  Financial history — shared row builder                           #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _build_period_row(fin, cf, bs, col, period_label: str, bs_col=None) -> dict:
+        """Build one period row from income / cashflow / balance-sheet DataFrames."""
+        d: dict = {"period": period_label}
+
+        rev    = _first(fin, ["Total Revenue"], col)
+        net    = _first(fin, ["Net Income", "Net Income Common Stockholders"], col)
+        gp     = _first(fin, ["Gross Profit"], col)
+        oi     = _first(fin, ["Operating Income", "Operating Income Loss"], col)
+        ebitda = _first(fin, ["EBITDA", "Normalized EBITDA"], col)
+
+        d["revenue"]          = rev
+        d["net_income"]       = net
+        d["gross_profit"]     = gp
+        d["operating_income"] = oi
+        d["ebitda"]           = ebitda
+        d["gross_margin"]     = round(gp / rev * 100, 1) if gp and rev else None
+        d["operating_margin"] = round(oi / rev * 100, 1) if oi and rev else None
+        d["net_margin"]       = round(net / rev * 100, 1) if net and rev else None
+
+        eps_y = _first(fin, ["Diluted EPS", "Basic EPS"], col)
+        d["eps"] = round(eps_y, 2) if eps_y is not None else None
+        if eps_y and net and abs(eps_y) > 0.01:
+            d["shares"] = round(net / eps_y / 1e6, 1)  # millions
+
+        if cf is not None and not cf.empty and col in cf.columns:
+            ocf   = _first(cf, ["Operating Cash Flow",
+                                 "Cash Flow From Continuing Operating Activities"], col)
+            capex = _first(cf, ["Capital Expenditure", "Capital Expenditures"], col)
+            if ocf is not None:
+                capex_abs = abs(capex) if capex is not None else 0
+                d["operating_cashflow"] = ocf
+                d["capex"]              = capex_abs
+                d["fcf"]                = ocf - capex_abs
+                d["fcf_margin"]         = round((ocf - capex_abs) / rev * 100, 1) if rev else None
+
+        effective_bs_col = bs_col if bs_col is not None else col
+        if bs is not None and not bs.empty and effective_bs_col in bs.columns:
+            d["total_debt"] = _first(bs, ["Total Debt",
+                                          "Long Term Debt And Capital Lease Obligation",
+                                          "Long Term Debt"], effective_bs_col)
+            d["cash"]       = _first(bs, ["Cash And Cash Equivalents",
+                                          "Cash Cash Equivalents And Short Term Investments"], effective_bs_col)
+            d["equity"]     = _first(bs, ["Total Stockholder Equity",
+                                          "Stockholders Equity",
+                                          "Common Stock Equity"], effective_bs_col)
+            ca = _first(bs, ["Current Assets",      "Total Current Assets"],      effective_bs_col)
+            cl = _first(bs, ["Current Liabilities", "Total Current Liabilities"], effective_bs_col)
+            d["current_assets"]      = ca
+            d["current_liabilities"] = cl
+            d["current_ratio_hist"]  = round(ca / cl, 2) if ca and cl and cl != 0 else None
+
+        return d
+
     def _financial_history(self, tk: yf.Ticker) -> dict:
-        result = {"annual": []}
+        result = {"annual": [], "quarterly": []}
+
+        # ── Annual ────────────────────────────────────────────────────────
         try:
             fin = tk.financials
-            cf = tk.cashflow
-            bs = tk.balance_sheet
-            if fin is None or fin.empty:
-                return result
+            cf  = tk.cashflow
+            bs  = tk.balance_sheet
+            if fin is not None and not fin.empty:
+                bs_cols_asc = list(reversed(bs.columns)) if bs is not None and not bs.empty else []
+                for i, col in enumerate(reversed(fin.columns)):
+                    label  = col.strftime("%Y")
+                    bs_col = bs_cols_asc[i] if i < len(bs_cols_asc) else None
+                    d      = self._build_period_row(fin, cf, bs, col, label, bs_col=bs_col)
 
-            shares = _safe(tk.info.get("sharesOutstanding")) or 1
+                    # ROIC per year
+                    if bs_col and bs is not None and not bs.empty and bs_col in bs.columns:
+                        try:
+                            oi_y  = _first(fin, ["Operating Income", "Operating Income Loss"], col)
+                            if oi_y and oi_y > 0:
+                                eq_y  = _first(bs, ["Total Stockholder Equity", "Common Stock Equity"], bs_col) or 0
+                                dbt_y = _first(bs, ["Total Debt", "Long Term Debt And Capital Lease Obligation"], bs_col) or 0
+                                csh_y = _first(bs, ["Cash And Cash Equivalents",
+                                                     "Cash Cash Equivalents And Short Term Investments"], bs_col) or 0
+                                ic_y  = eq_y + dbt_y - csh_y
+                                if ic_y <= 1e6:
+                                    ic_y = max(abs(eq_y) + dbt_y, 1e9)
+                                roic_y = oi_y * 0.79 / ic_y * 100
+                                if 0 < roic_y < 200:
+                                    d["roic"] = round(roic_y, 1)
+                        except Exception:
+                            pass
 
-            for i, col in enumerate(reversed(fin.columns)):  # oldest → newest
-                year = col.strftime("%Y")
-                d: dict = {"period": year}
-
-                rev = _first(fin, ["Total Revenue"], col)
-                net = _first(fin, ["Net Income", "Net Income Common Stockholders"], col)
-                gp = _first(fin, ["Gross Profit"], col)
-                oi = _first(fin, ["Operating Income", "Operating Income Loss"], col)
-                ebitda = _first(fin, ["EBITDA", "Normalized EBITDA"], col)
-
-                d["revenue"] = rev
-                d["net_income"] = net
-                d["gross_profit"] = gp
-                d["operating_income"] = oi
-                d["ebitda"] = ebitda
-                d["gross_margin"] = round(gp / rev * 100, 1) if gp and rev else None
-                d["operating_margin"] = round(oi / rev * 100, 1) if oi and rev else None
-                d["net_margin"] = round(net / rev * 100, 1) if net and rev else None
-                # Use actual EPS from income statement (period-accurate, not derived from current shares)
-                eps_y = _first(fin, ["Diluted EPS", "Basic EPS"], col)
-                d["eps"] = round(eps_y, 2) if eps_y is not None else None
-                ni_y = d.get("net_income")
-                if eps_y and ni_y and abs(eps_y) > 0.01:
-                    d["shares"] = round(ni_y / eps_y / 1e6, 1)  # millions
-
-                # Cash flow
-                if cf is not None and not cf.empty and col in cf.columns:
-                    ocf = _first(cf, ["Operating Cash Flow",
-                                      "Cash Flow From Continuing Operating Activities"], col)
-                    capex = _first(cf, ["Capital Expenditure", "Capital Expenditures"], col)
-                    if ocf is not None:
-                        capex_abs = abs(capex) if capex is not None else 0
-                        d["operating_cashflow"] = ocf
-                        d["capex"] = capex_abs
-                        d["fcf"] = ocf - capex_abs
-                        d["fcf_margin"] = round((ocf - capex_abs) / rev * 100, 1) if rev and rev != 0 else None
-
-                # Balance sheet
-                if bs is not None and not bs.empty and col in bs.columns:
-                    d["total_debt"] = _first(bs, ["Total Debt",
-                                                  "Long Term Debt And Capital Lease Obligation",
-                                                  "Long Term Debt"], col)
-                    d["cash"] = _first(bs, ["Cash And Cash Equivalents",
-                                            "Cash Cash Equivalents And Short Term Investments"], col)
-                    d["equity"] = _first(bs, ["Total Stockholder Equity",
-                                              "Stockholders Equity",
-                                              "Common Stock Equity"], col)
-                    ca = _first(bs, ["Current Assets", "Total Current Assets"], col)
-                    cl = _first(bs, ["Current Liabilities", "Total Current Liabilities"], col)
-                    d["current_assets"] = ca
-                    d["current_liabilities"] = cl
-                    d["current_ratio_hist"] = round(ca / cl, 2) if ca and cl and cl != 0 else None
-
-                # ROIC per year — match oldest-first fin col to oldest-first bs col
-                if bs is not None and not bs.empty:
-                    bs_cols_asc = list(reversed(bs.columns))  # oldest → newest
-                    bs_col = bs_cols_asc[i] if i < len(bs_cols_asc) else bs_cols_asc[-1]
-                    try:
-                        oi_y = _first(fin, ["Operating Income", "Operating Income Loss"], col)
-                        if oi_y and oi_y > 0:
-                            eq_y  = _first(bs, ["Total Stockholder Equity", "Common Stock Equity"], bs_col) or 0
-                            dbt_y = _first(bs, ["Total Debt", "Long Term Debt And Capital Lease Obligation"], bs_col) or 0
-                            csh_y = _first(bs, ["Cash And Cash Equivalents",
-                                                 "Cash Cash Equivalents And Short Term Investments"], bs_col) or 0
-                            ic_y  = eq_y + dbt_y - csh_y
-                            if ic_y <= 1e6:  # guard against zero/negative/tiny IC
-                                ic_y = max(abs(eq_y) + dbt_y, 1e9)
-                            roic_y = oi_y * 0.79 / ic_y * 100
-                            if 0 < roic_y < 200:  # sanity cap
-                                d["roic"] = round(roic_y, 1)
-                    except Exception:
-                        pass
-
-                result["annual"].append(d)
-
+                    result["annual"].append(d)
         except Exception as e:
-            logger.error(f"financial_history error for ticker: {type(e).__name__}: {str(e)[:120]}")
+            logger.error(f"annual_history error: {type(e).__name__}: {str(e)[:120]}")
+
+        # ── Quarterly ─────────────────────────────────────────────────────
+        try:
+            qfin = tk.quarterly_financials
+            qcf  = tk.quarterly_cashflow
+            qbs  = tk.quarterly_balance_sheet
+            if qfin is not None and not qfin.empty:
+                for col in reversed(qfin.columns):  # oldest → newest
+                    q_num = (col.month - 1) // 3 + 1
+                    label = f"Q{q_num} {col.year}"
+                    d     = self._build_period_row(qfin, qcf, qbs, col, label)
+                    result["quarterly"].append(d)
+        except Exception as e:
+            logger.error(f"quarterly_history error: {type(e).__name__}: {str(e)[:120]}")
 
         return result
+
+    def _earnings_history(self, tk: yf.Ticker) -> list:
+        """EPS actual vs estimate from earnings_dates. Newest first, up to 12 entries."""
+        history = []
+        try:
+            ed = tk.earnings_dates
+            if ed is None or ed.empty:
+                return history
+            for dt, row in ed.head(12).iterrows():
+                eps_est = _safe(row.get("EPS Estimate"))
+                eps_act = _safe(row.get("Reported EPS"))
+                surprise = _safe(row.get("Surprise(%)"))
+                is_future = eps_act is None
+                history.append({
+                    "date":         dt.strftime("%Y-%m-%d"),
+                    "eps_estimate": eps_est,
+                    "eps_actual":   eps_act,
+                    "surprise_pct": surprise,
+                    "beat":         (eps_act > eps_est) if (eps_act is not None and eps_est is not None) else None,
+                    "is_future":    is_future,
+                })
+        except Exception as e:
+            logger.warning(f"earnings_history error: {type(e).__name__}: {str(e)[:80]}")
+        return history
 
     # ------------------------------------------------------------------ #
     #  Fundamental scoring  (sector-aware, analyst-grade)                #
