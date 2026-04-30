@@ -4,6 +4,7 @@ import GrahamScore from './GrahamScore.jsx'
 import DCFCalculator from './DCFCalculator.jsx'
 import AIScore from './AIScore.jsx'
 import LLMAnalysis from './LLMAnalysis.jsx'
+import SentimentAnalysis from './SentimentAnalysis.jsx'
 import {
   PriceChart, RevenueChart, MarginsChart, FCFChart, DebtChart, EPSChart,
   ROICChart, SharesChart,
@@ -22,12 +23,13 @@ const CHART_TABS = [
 ]
 
 const SECTION_TABS = [
-  { key: 'overview',  label: 'Overview' },
-  { key: 'history',   label: 'Financials Table' },
-  { key: 'dcf',       label: 'DCF Calculator' },
-  { key: 'graham',    label: 'Graham Score' },
-  { key: 'aiscore',   label: '✦ AI Score' },
-  { key: 'llm',       label: '✦ AI Analysis' },
+  { key: 'overview',   label: 'Overview' },
+  { key: 'history',    label: 'Financials Table' },
+  { key: 'dcf',        label: 'DCF Calculator' },
+  { key: 'graham',     label: 'Graham Score' },
+  { key: 'aiscore',    label: '✦ AI Score' },
+  { key: 'llm',        label: '✦ AI Analysis' },
+  { key: 'sentiment',  label: '✦ Sentiment' },
 ]
 
 function MetricTile({ label, value, color, sub }) {
@@ -432,6 +434,11 @@ export default function StockDetail({ ticker, onBack }) {
       {/* LLM Analysis */}
       {sectionTab === 'llm' && (
         <LLMAnalysis ticker={stock.symbol} />
+      )}
+
+      {/* Market & Investor Sentiment */}
+      {sectionTab === 'sentiment' && (
+        <SentimentAnalysis ticker={stock.symbol} />
       )}
 
     </div>

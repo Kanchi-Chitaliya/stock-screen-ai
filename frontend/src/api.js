@@ -93,6 +93,9 @@ export const api = {
 
   getAIScore: (ticker) =>
     withRetry(() => fetchJSON(`${BASE}/ai-score/${ticker}`, { method: 'POST' })),
+
+  getSentiment: (ticker) =>
+    withRetry(() => fetchJSON(`${BASE}/sentiment/${ticker}`, { method: 'POST' })),
 }
 
 export function fmt(v, opts = {}) {

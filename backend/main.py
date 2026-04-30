@@ -14,6 +14,7 @@ from stock_data import StockDataFetcher
 from dcf_analysis import DCFAnalyzer
 from llm_analysis import analyze_stock
 from ai_score import score_stock, score_stock_local
+from sentiment_analysis import analyze_sentiment
 from cache import cache
 from utils import validate_ticker, validate_index, logger, TICKER_NOT_FOUND, DATA_FETCH_ERROR, INVALID_PARAMETERS
 
@@ -290,14 +291,14 @@ async def get_llm_analysis(ticker: str):
     except ValueError as e:
         logger.warning(f"Invalid ticker: {ticker}")
         raise HTTPException(status_code=400, detail=f"Invalid ticker: {str(e)}")
-    
+
     loop = asyncio.get_running_loop()
     try:
         stock_data = await loop.run_in_executor(_pool, fetcher.get_full_stock_data, ticker)
         if not stock_data:
             logger.warning(f"No data found for {ticker}")
             raise HTTPException(status_code=404, detail=TICKER_NOT_FOUND)
-        
+
         result = await loop.run_in_executor(_pool, analyze_stock, stock_data)
         logger.info(f"LLM analysis completed for {ticker}")
         return result
@@ -305,6 +306,44 @@ async def get_llm_analysis(ticker: str):
         raise
     except Exception as e:
         logger.error(f"LLM analysis failed for {ticker}: {type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail=DATA_FETCH_ERROR)
+
+
+# ------------------------------------------------------------------ #
+#  Market & Investor Sentiment                                        #
+# ------------------------------------------------------------------ #
+
+@app.post("/api/sentiment/{ticker}")
+async def get_sentiment(ticker: str):
+    """Live news sentiment analysis powered by Claude."""
+    try:
+        ticker = validate_ticker(ticker)
+        logger.info(f"Sentiment request: {ticker}")
+    except ValueError as e:
+        logger.warning(f"Invalid ticker: {ticker}")
+        raise HTTPException(status_code=400, detail=f"Invalid ticker: {str(e)}")
+
+    loop = asyncio.get_running_loop()
+    try:
+        stock_data = await loop.run_in_executor(_pool, fetcher.get_current_metrics, ticker)
+        if not stock_data:
+            logger.warning(f"No data found for {ticker}")
+            raise HTTPException(status_code=404, detail=TICKER_NOT_FOUND)
+
+        def _run_sentiment():
+            import yfinance as yf
+            tk = yf.Ticker(ticker)
+            return analyze_sentiment(stock_data, tk)
+
+        result = await loop.run_in_executor(_pool, _run_sentiment)
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+        logger.info(f"Sentiment analysis completed for {ticker}")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Sentiment analysis failed for {ticker}: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail=DATA_FETCH_ERROR)
 
 
