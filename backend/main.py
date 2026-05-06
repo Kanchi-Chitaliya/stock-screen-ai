@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
@@ -84,6 +85,37 @@ app.add_middleware(
 # ------------------------------------------------------------------ #
 #  Indices                                                            #
 # ------------------------------------------------------------------ #
+
+@app.get("/api/search")
+def search_stocks(q: str = Query(..., min_length=1, max_length=50)):
+    """Search cached stocks by symbol or company name."""
+    q_low = q.strip().lower()
+    results = []
+    now = time.time()
+    for key, entry in cache._data.items():
+        if not key.startswith("metrics:"):
+            continue
+        if now - entry["ts"] > cache.ttl:
+            continue
+        s = entry.get("value") or {}
+        symbol = (s.get("symbol") or "").upper()
+        name   = (s.get("name")   or "").lower()
+        if not symbol or not (q_low in symbol.lower() or q_low in name):
+            continue
+        results.append({
+            "symbol": symbol,
+            "name":   s.get("name", ""),
+            "sector": s.get("sector", ""),
+            "price":  s.get("price"),
+        })
+    results.sort(key=lambda x: (
+        0 if x["symbol"].lower() == q_low else
+        1 if x["symbol"].lower().startswith(q_low) else
+        2 if x["name"].lower().startswith(q_low) else
+        3
+    ))
+    return results[:8]
+
 
 @app.get("/api/indices")
 def get_indices():

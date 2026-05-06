@@ -104,6 +104,9 @@ export const api = {
     ]),
 
   // ── Alerts ────────────────────────────────────────────────────────
+  searchStocks: (q) =>
+    fetchJSON(`${BASE}/search?q=${encodeURIComponent(q)}`),
+
   getAlerts: () =>
     fetchJSON(`${BASE}/alerts`),
 

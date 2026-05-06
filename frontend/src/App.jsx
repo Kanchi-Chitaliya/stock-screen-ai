@@ -3,7 +3,92 @@ import StockScreener from './components/StockScreener.jsx'
 import StockDetail from './components/StockDetail.jsx'
 import AlertsPanel from './components/AlertsPanel.jsx'
 import { api } from './api.js'
-import { TrendingUp, BookOpen, Bell } from 'lucide-react'
+import { TrendingUp, BookOpen, Bell, Search } from 'lucide-react'
+
+// ── Global autocomplete search ────────────────────────────────────────────
+function GlobalSearch({ onSelect }) {
+  const [query, setQuery]       = useState('')
+  const [results, setResults]   = useState([])
+  const [open, setOpen]         = useState(false)
+  const [active, setActive]     = useState(-1)
+  const timerRef                = useRef(null)
+  const wrapRef                 = useRef(null)
+
+  // Debounced search
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); setOpen(false); return }
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      api.searchStocks(query)
+        .then(r => { setResults(r); setOpen(r.length > 0); setActive(-1) })
+        .catch(() => {})
+    }, 200)
+    return () => clearTimeout(timerRef.current)
+  }, [query])
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const commit = (symbol) => {
+    setQuery(''); setResults([]); setOpen(false); setActive(-1)
+    onSelect(symbol)
+  }
+
+  const onKey = (e) => {
+    if (!open) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, results.length - 1)) }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setActive(i => Math.max(i - 1, 0)) }
+    if (e.key === 'Enter') {
+      if (active >= 0) { commit(results[active].symbol) }
+      else if (query.trim()) { commit(query.trim().toUpperCase()) }
+    }
+    if (e.key === 'Escape') { setOpen(false) }
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1 focus-within:border-blue-500 transition-colors w-52">
+        <Search size={12} className="text-gray-500 shrink-0" />
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={onKey}
+          onFocus={() => results.length && setOpen(true)}
+          placeholder="Search ticker or name…"
+          className="bg-transparent text-gray-200 text-xs w-full focus:outline-none placeholder-gray-600"
+        />
+      </div>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 w-72 bg-[#0d1220] border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50">
+          {results.map((r, i) => (
+            <button
+              key={r.symbol}
+              onMouseDown={() => commit(r.symbol)}
+              onMouseEnter={() => setActive(i)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                i === active ? 'bg-blue-600/20' : 'hover:bg-gray-800/60'
+              }`}
+            >
+              <span className="font-mono font-bold text-blue-400 text-sm w-14 shrink-0">{r.symbol}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-200 truncate">{r.name}</div>
+                {r.sector && <div className="text-[10px] text-gray-600 truncate">{r.sector}</div>}
+              </div>
+              {r.price && (
+                <span className="font-mono text-xs text-gray-400 shrink-0">${r.price.toFixed(2)}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Hash routing ──────────────────────────────────────────────────────────
 function parseHash() {
@@ -109,23 +194,7 @@ export default function App() {
           )}
 
           <div className="ml-auto flex items-center gap-3">
-            {/* Quick ticker jump */}
-            <form
-              onSubmit={e => {
-                e.preventDefault()
-                const t = e.target.ticker.value.trim().toUpperCase()
-                if (t) { e.target.reset(); openStock(t) }
-              }}
-              className="flex gap-1"
-            >
-              <input
-                name="ticker"
-                placeholder="Jump to ticker…"
-                className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2.5 py-1 w-32 focus:outline-none focus:border-blue-500 placeholder-gray-600"
-              />
-              <button type="submit" className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded transition-colors">→</button>
-            </form>
-
+            <GlobalSearch onSelect={openStock} />
             <span className="text-xs text-gray-500 hidden sm:block">NASDAQ 100 · S&amp;P 100</span>
 
             {/* Global alerts bell */}
