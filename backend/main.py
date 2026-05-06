@@ -15,6 +15,11 @@ from dcf_analysis import DCFAnalyzer
 from llm_analysis import analyze_stock
 from ai_score import score_stock, score_stock_local
 from sentiment_analysis import analyze_sentiment
+from alerts import (
+    list_alerts, create_alert, delete_alert, clear_triggered,
+    pop_pending_browser_notifications, send_test_email, email_configured,
+    alert_monitor,
+)
 from cache import cache
 from utils import validate_ticker, validate_index, logger, TICKER_NOT_FOUND, DATA_FETCH_ERROR, INVALID_PARAMETERS
 
@@ -60,6 +65,7 @@ async def _prewarm():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(_prewarm())
+    asyncio.create_task(alert_monitor())
     yield
     _pool.shutdown(wait=False)
 
@@ -345,6 +351,69 @@ async def get_sentiment(ticker: str):
     except Exception as e:
         logger.error(f"Sentiment analysis failed for {ticker}: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail=DATA_FETCH_ERROR)
+
+
+# ------------------------------------------------------------------ #
+#  Price Alerts                                                       #
+# ------------------------------------------------------------------ #
+
+class AlertRequest(BaseModel):
+    ticker:        str
+    name:          str   = ""
+    target_price:  float = Field(..., gt=0)
+    direction:     str   = Field(..., pattern="^(above|below)$")
+    current_price: float = Field(..., gt=0)
+
+
+@app.get("/api/alerts")
+def get_alerts():
+    return list_alerts()
+
+
+@app.post("/api/alerts")
+def add_alert(req: AlertRequest):
+    try:
+        ticker = validate_ticker(req.ticker)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return create_alert(ticker, req.name or ticker, req.target_price, req.direction, req.current_price)
+
+
+@app.delete("/api/alerts/{alert_id}")
+def remove_alert(alert_id: str):
+    if not delete_alert(alert_id):
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"deleted": alert_id}
+
+
+@app.delete("/api/alerts")
+def remove_triggered_alerts():
+    return {"removed": clear_triggered()}
+
+
+@app.get("/api/alerts/pending")
+def pending_notifications():
+    """Browser polls this to get newly triggered alerts for desktop notification."""
+    return pop_pending_browser_notifications()
+
+
+@app.post("/api/alerts/test-email")
+def test_alert_email():
+    if not email_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Email not configured. Add ALERT_EMAIL_FROM and GMAIL_APP_PASSWORD to backend/.env"
+        )
+    try:
+        send_test_email()
+        return {"sent": True, "to": "configured address"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
+
+
+@app.get("/api/alerts/config")
+def alert_config():
+    return {"email_configured": email_configured()}
 
 
 # ------------------------------------------------------------------ #

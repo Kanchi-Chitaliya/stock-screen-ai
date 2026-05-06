@@ -5,11 +5,12 @@ import DCFCalculator from './DCFCalculator.jsx'
 import AIScore from './AIScore.jsx'
 import LLMAnalysis from './LLMAnalysis.jsx'
 import SentimentAnalysis from './SentimentAnalysis.jsx'
+import { AlertForm } from './AlertsPanel.jsx'
 import {
   PriceChart, RevenueChart, MarginsChart, FCFChart, DebtChart, EPSChart,
   ROICChart, SharesChart,
 } from './MetricCharts.jsx'
-import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Bell } from 'lucide-react'
 
 const CHART_TABS = [
   { key: 'price',    label: 'Price' },
@@ -219,6 +220,7 @@ export default function StockDetail({ ticker, onBack }) {
   const [sentimentData, setSentimentData] = useState(null)
   const [sentimentLoading, setSentimentLoading] = useState(true)
   const [sentimentError, setSentimentError] = useState(null)
+  const [showAlertForm, setShowAlertForm] = useState(false)
 
   const fetchSentiment = (t) => {
     setSentimentData(null); setSentimentError(null); setSentimentLoading(true)
@@ -278,18 +280,37 @@ export default function StockDetail({ ticker, onBack }) {
         >
           <ArrowLeft size={16} /> Back to Screener
         </button>
-        <button
-          onClick={() => loadStock(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-          title="Clear cache and reload fresh data"
-        >
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-          {stock?._cached_age != null
-            ? `Data ${Math.round(stock._cached_age / 60)}m old · Refresh`
-            : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowAlertForm(v => !v)}
+            className={`flex items-center gap-1.5 text-xs transition-colors ${showAlertForm ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}`}
+            title="Set price alert"
+          >
+            <Bell size={13} /> Alert
+          </button>
+          <button
+            onClick={() => loadStock(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+            title="Clear cache and reload fresh data"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            {stock?._cached_age != null
+              ? `Data ${Math.round(stock._cached_age / 60)}m old · Refresh`
+              : 'Refresh'}
+          </button>
+        </div>
       </div>
+
+      {showAlertForm && stock && (
+        <AlertForm
+          ticker={stock.symbol}
+          name={stock.name}
+          currentPrice={stock.price}
+          onCreated={() => {}}
+          onClose={() => setShowAlertForm(false)}
+        />
+      )}
 
       {/* Header */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">

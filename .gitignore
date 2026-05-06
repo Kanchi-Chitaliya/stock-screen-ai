@@ -37,6 +37,9 @@ env/
 *.cache
 *.pkl
 
+# User data
+backend/alerts.json
+
 # IDE
 .vscode/
 .idea/

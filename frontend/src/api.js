@@ -102,6 +102,37 @@ export const api = {
       fetchJSON(`${BASE}/cache?prefix=detail:${ticker}`, { method: 'DELETE' }),
       fetchJSON(`${BASE}/cache?prefix=metrics:${ticker}`, { method: 'DELETE' }),
     ]),
+
+  // ── Alerts ────────────────────────────────────────────────────────
+  getAlerts: () =>
+    fetchJSON(`${BASE}/alerts`),
+
+  createAlert: (ticker, name, targetPrice, direction, currentPrice) =>
+    fetchJSON(`${BASE}/alerts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker, name,
+        target_price: targetPrice,
+        direction,
+        current_price: currentPrice,
+      }),
+    }),
+
+  deleteAlert: (id) =>
+    fetchJSON(`${BASE}/alerts/${id}`, { method: 'DELETE' }),
+
+  clearTriggeredAlerts: () =>
+    fetchJSON(`${BASE}/alerts`, { method: 'DELETE' }),
+
+  getPendingNotifications: () =>
+    fetchJSON(`${BASE}/alerts/pending`),
+
+  getAlertConfig: () =>
+    fetchJSON(`${BASE}/alerts/config`),
+
+  testAlertEmail: () =>
+    fetchJSON(`${BASE}/alerts/test-email`, { method: 'POST' }),
 }
 
 export function fmt(v, opts = {}) {
