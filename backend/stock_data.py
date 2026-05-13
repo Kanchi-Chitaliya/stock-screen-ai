@@ -255,6 +255,20 @@ class StockDataFetcher:
             div_yield_val  = _safe(info.get("dividendYield")) / 100 if _safe(info.get("dividendYield")) else 0.0
             total_sh_yield = div_yield_val + buyback_yield if (div_yield_val or buyback_yield) else None
 
+            # Next earnings date (from yfinance info — no extra call needed)
+            next_earnings_date = None
+            try:
+                ts = info.get("earningsTimestamp") or (
+                    info.get("earningsDate")[0] if info.get("earningsDate") else None
+                )
+                if ts:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+                    if dt.date() >= datetime.now(timezone.utc).date():
+                        next_earnings_date = dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
             # Extended-hours pricing (only present outside regular session)
             regular_change     = _safe(info.get("regularMarketChange"))
             regular_change_pct = _safe(info.get("regularMarketChangePercent"))
@@ -307,6 +321,7 @@ class StockDataFetcher:
                 "beta": _safe(info.get("beta")),
                 "fifty_two_week_high": _safe(info.get("fiftyTwoWeekHigh")),
                 "fifty_two_week_low": _safe(info.get("fiftyTwoWeekLow")),
+                "next_earnings_date": next_earnings_date,
                 # surfaced from graham_score for screener-level display
                 "roic": graham.get("_roic"),
                 "interest_coverage": graham.get("_interest_cov"),

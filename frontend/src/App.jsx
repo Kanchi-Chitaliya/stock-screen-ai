@@ -217,7 +217,9 @@ export default function App() {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-6 py-6">
-        {nav.view === 'screener' && <StockScreener onSelectStock={openStock} />}
+        <div className={nav.view !== 'screener' ? 'hidden' : ''}>
+          <StockScreener onSelectStock={openStock} />
+        </div>
         {nav.view === 'detail' && nav.ticker && (
           <StockDetail ticker={nav.ticker} onBack={backToScreener} />
         )}

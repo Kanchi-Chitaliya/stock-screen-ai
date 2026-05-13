@@ -103,6 +103,9 @@ export const api = {
       fetchJSON(`${BASE}/cache?prefix=metrics:${ticker}`, { method: 'DELETE' }),
     ]),
 
+  getUpcomingEarnings: (days = 30) =>
+    fetchJSON(`${BASE}/earnings/upcoming?days=${days}`),
+
   // ── Alerts ────────────────────────────────────────────────────────
   searchStocks: (q) =>
     fetchJSON(`${BASE}/search?q=${encodeURIComponent(q)}`),

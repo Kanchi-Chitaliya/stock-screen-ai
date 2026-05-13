@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { api, fmt, fmtLarge, colorForPE, colorForGrowth, grahamScoreColor } from '../api.js'
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, RefreshCw, Filter, Database, Zap } from 'lucide-react'
+import EarningsTracker from './EarningsTracker.jsx'
 
 const COLS = [
   { key: 'symbol',        label: 'Ticker',        align: 'left' },
@@ -220,6 +221,9 @@ export default function StockScreener({ onSelectStock }) {
           </button>
         </div>
       </div>
+
+      {/* Earnings Calendar */}
+      <EarningsTracker onSelectStock={onSelectStock} />
 
       {/* Progress bar */}
       {loading && (

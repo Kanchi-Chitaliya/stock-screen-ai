@@ -122,6 +122,46 @@ def get_indices():
     return {"top_25": TOP_25, "nasdaq_100": NASDAQ_100, "sp_100": SP_100, "combined": get_combined_list()}
 
 
+@app.get("/api/earnings/upcoming")
+def get_upcoming_earnings(days: int = Query(30, ge=1, le=90)):
+    """Return cached stocks with earnings in the next N days, sorted by date."""
+    from datetime import date, datetime, timezone, timedelta
+    today = datetime.now(timezone.utc).date()
+    cutoff = today + timedelta(days=days)
+    results = []
+    now = time.time()
+    for key, entry in cache._data.items():
+        if not key.startswith("metrics:"):
+            continue
+        if now - entry["ts"] > cache.ttl:
+            continue
+        s = entry.get("value") or {}
+        nd = s.get("next_earnings_date")
+        if not nd:
+            continue
+        try:
+            d = datetime.strptime(nd, "%Y-%m-%d").date()
+            if today <= d <= cutoff:
+                days_until = (d - today).days
+                results.append({
+                    "symbol":             s.get("symbol"),
+                    "name":               s.get("name", ""),
+                    "sector":             s.get("sector", ""),
+                    "price":              s.get("price"),
+                    "next_earnings_date": nd,
+                    "days_until":         days_until,
+                    "market_cap":         s.get("market_cap"),
+                    "pe_ratio":           s.get("pe_ratio"),
+                    "revenue_growth":     s.get("revenue_growth"),
+                    "eps_cagr":           s.get("eps_cagr"),
+                    "graham_score":       (s.get("graham_score") or {}).get("score"),
+                })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["next_earnings_date"])
+    return results
+
+
 # ------------------------------------------------------------------ #
 #  Screener — parallel batches, SSE stream                           #
 # ------------------------------------------------------------------ #

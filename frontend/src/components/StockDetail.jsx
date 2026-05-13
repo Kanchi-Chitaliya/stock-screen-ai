@@ -341,7 +341,7 @@ export default function StockDetail({ ticker, onBack }) {
               <div className={`text-sm font-mono mt-0.5 ${stock.regular_market_change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {stock.regular_market_change >= 0 ? '+' : ''}{stock.regular_market_change?.toFixed(2)}{' '}
                 ({stock.regular_market_change_pct != null
-                  ? `${stock.regular_market_change_pct >= 0 ? '+' : ''}${(stock.regular_market_change_pct * 100).toFixed(2)}%`
+                  ? `${stock.regular_market_change_pct >= 0 ? '+' : ''}${stock.regular_market_change_pct.toFixed(2)}%`
                   : ''})
               </div>
             )}
@@ -360,7 +360,7 @@ export default function StockDetail({ ticker, onBack }) {
                     {exChange != null && (
                       <span className="ml-1.5 text-xs font-normal">
                         {exChange >= 0 ? '+' : ''}{exChange?.toFixed(2)}
-                        {exPct != null && ` (${exPct >= 0 ? '+' : ''}${(exPct * 100).toFixed(2)}%)`}
+                        {exPct != null && ` (${exPct >= 0 ? '+' : ''}${exPct.toFixed(2)}%)`}
                       </span>
                     )}
                   </div>
