@@ -210,6 +210,7 @@ export default function StockScreener({ onSelectStock, onOpenWatchlist }) {
             <option value="combined">NASDAQ 100 + S&P 100</option>
             <option value="nasdaq_100">NASDAQ 100</option>
             <option value="sp_100">S&P 100</option>
+            <option value="sp_500">S&P 500</option>
           </select>
 
           {/* Sector filter */}

@@ -203,7 +203,7 @@ export default function App() {
 
           <div className="ml-auto flex items-center gap-3">
             <GlobalSearch onSelect={openStock} />
-            <span className="text-xs text-gray-500 hidden sm:block">NASDAQ 100 · S&amp;P 100</span>
+            <span className="text-xs text-gray-500 hidden sm:block">NASDAQ 100 · S&amp;P 500</span>
 
             {/* Watchlist */}
             <button
