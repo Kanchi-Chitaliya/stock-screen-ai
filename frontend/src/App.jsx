@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import StockScreener from './components/StockScreener.jsx'
 import StockDetail from './components/StockDetail.jsx'
 import AlertsPanel from './components/AlertsPanel.jsx'
+import WatchlistPanel from './components/WatchlistPanel.jsx'
 import { api } from './api.js'
-import { TrendingUp, BookOpen, Bell, Search } from 'lucide-react'
+import { TrendingUp, BookOpen, Bell, Search, Bookmark } from 'lucide-react'
 
 // ── Global autocomplete search ────────────────────────────────────────────
 function GlobalSearch({ onSelect }) {
@@ -124,8 +125,10 @@ function showBrowserNotification(alert) {
 
 // ── App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [nav, setNav]             = useState(() => parseHash())
+  const [nav, setNav]               = useState(() => parseHash())
   const [showAlerts, setShowAlerts] = useState(false)
+  const [showWatchlist, setShowWatchlist] = useState(false)
+  const [watchlistPending, setWatchlistPending] = useState(null) // {ticker, name} to pre-fill
   const [activeCount, setActiveCount] = useState(0)
   const pollRef = useRef(null)
 
@@ -172,6 +175,11 @@ export default function App() {
   const openStock      = useCallback((t) => go('detail', t), [go])
   const backToScreener = useCallback(() => go('screener'), [go])
 
+  const openWatchlistFor = useCallback((ticker, name) => {
+    setWatchlistPending({ ticker, name })
+    setShowWatchlist(true)
+  }, [])
+
   return (
     <div className="min-h-screen bg-[#0a0e17] text-gray-100">
       <header className="border-b border-gray-800 bg-[#0d1220] sticky top-0 z-50">
@@ -197,6 +205,17 @@ export default function App() {
             <GlobalSearch onSelect={openStock} />
             <span className="text-xs text-gray-500 hidden sm:block">NASDAQ 100 · S&amp;P 100</span>
 
+            {/* Watchlist */}
+            <button
+              onClick={() => { setWatchlistPending(null); setShowWatchlist(v => !v) }}
+              className={`p-1.5 rounded-lg transition-colors ${
+                showWatchlist ? 'bg-blue-500/10 text-blue-400' : 'text-gray-500 hover:text-blue-400 hover:bg-blue-500/10'
+              }`}
+              title="Watchlists"
+            >
+              <Bookmark size={16} />
+            </button>
+
             {/* Global alerts bell */}
             <button
               onClick={() => setShowAlerts(v => !v)}
@@ -218,22 +237,34 @@ export default function App() {
 
       <main className="max-w-screen-2xl mx-auto px-6 py-6">
         <div className={nav.view !== 'screener' ? 'hidden' : ''}>
-          <StockScreener onSelectStock={openStock} />
+          <StockScreener onSelectStock={openStock} onOpenWatchlist={openWatchlistFor} />
         </div>
         {nav.view === 'detail' && nav.ticker && (
-          <StockDetail ticker={nav.ticker} onBack={backToScreener} />
+          <StockDetail ticker={nav.ticker} onBack={backToScreener} onOpenWatchlist={openWatchlistFor} />
         )}
       </main>
+
+      {/* Watchlist slide-over panel */}
+      {showWatchlist && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setShowWatchlist(false)} />
+          <div className="fixed top-0 right-0 h-full w-full max-w-sm z-50 bg-[#0d1220] border-l border-gray-800 shadow-2xl flex flex-col">
+            <WatchlistPanel
+              pendingTicker={watchlistPending}
+              onClose={() => setShowWatchlist(false)}
+              onSelectStock={(t) => { setShowWatchlist(false); openStock(t) }}
+            />
+          </div>
+        </>
+      )}
 
       {/* Alerts slide-over panel */}
       {showAlerts && (
         <>
-          {/* Backdrop */}
           <div
             className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
             onClick={() => setShowAlerts(false)}
           />
-          {/* Panel */}
           <div className="fixed top-0 right-0 h-full w-full max-w-sm z-50 bg-[#0d1220] border-l border-gray-800 shadow-2xl flex flex-col">
             <AlertsPanel onClose={() => { setShowAlerts(false); refreshCount() }} />
           </div>

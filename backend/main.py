@@ -23,6 +23,10 @@ from alerts import (
 )
 from cache import cache
 from utils import validate_ticker, validate_index, logger, TICKER_NOT_FOUND, DATA_FETCH_ERROR, INVALID_PARAMETERS
+from watchlist import (
+    list_watchlists, create_watchlist, rename_watchlist, delete_watchlist,
+    add_ticker as wl_add_ticker, remove_ticker as wl_remove_ticker, ticker_watchlist_ids,
+)
 
 _DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", _DEFAULT_ORIGINS).split(",") if o.strip()]
@@ -91,11 +95,10 @@ def search_stocks(q: str = Query(..., min_length=1, max_length=50)):
     """Search cached stocks by symbol or company name."""
     q_low = q.strip().lower()
     results = []
-    now = time.time()
-    for key, entry in cache._data.items():
+    # Snapshot avoids RuntimeError if cache is modified by another thread mid-iteration.
+    # TTL is intentionally ignored — stale names/symbols are still valid for navigation.
+    for key, entry in list(cache._data.items()):
         if not key.startswith("metrics:"):
-            continue
-        if now - entry["ts"] > cache.ttl:
             continue
         s = entry.get("value") or {}
         symbol = (s.get("symbol") or "").upper()
@@ -203,6 +206,8 @@ async def stream_screener(index: str = Query("combined")):
                         result["ai_score"]      = s.get("total_score")
                         result["ai_verdict"]    = s.get("verdict")
                         result["ai_fair_value"] = s.get("fair_value_range")
+                        # Write to aiscore cache so detail page shows the same value
+                        cache.set(f"aiscore:{ticker}", ai)
                     except Exception as e:
                         logger.warning(f"AI scoring failed for {ticker}: {type(e).__name__}")
                     
@@ -489,12 +494,105 @@ def alert_config():
 
 
 # ------------------------------------------------------------------ #
+#  Watchlists                                                         #
+# ------------------------------------------------------------------ #
+
+class WatchlistCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+
+class WatchlistRename(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+
+class WatchlistTickerAdd(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=10)
+    name:   str = ""
+
+
+@app.get("/api/watchlists")
+def get_watchlists():
+    wls = list_watchlists()
+    # Enrich each ticker with cached price data
+    now = time.time()
+    enriched = []
+    for wl in wls:
+        tickers_out = []
+        for t in wl["tickers"]:
+            sym = t["symbol"]
+            cached = cache._data.get(f"metrics:{sym}")
+            price_data = {}
+            if cached:
+                m = cached.get("value") or {}
+                price_data = {
+                    "price":                    m.get("price"),
+                    "regular_market_change":     m.get("regular_market_change"),
+                    "regular_market_change_pct": m.get("regular_market_change_pct"),
+                    "market_cap":               m.get("market_cap"),
+                    "sector":                   m.get("sector"),
+                    "pe_ratio":                 m.get("pe_ratio"),
+                    "graham_score":             (m.get("graham_score") or {}).get("score"),
+                    "stale":                    (now - cached["ts"]) > cache.ttl,
+                }
+            tickers_out.append({**t, **price_data})
+        enriched.append({**wl, "tickers": tickers_out})
+    return enriched
+
+
+@app.post("/api/watchlists")
+def new_watchlist(body: WatchlistCreate):
+    return create_watchlist(body.name)
+
+
+@app.patch("/api/watchlists/{wl_id}")
+def patch_watchlist(wl_id: str, body: WatchlistRename):
+    result = rename_watchlist(wl_id, body.name)
+    if not result:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return result
+
+
+@app.delete("/api/watchlists/{wl_id}")
+def del_watchlist(wl_id: str):
+    if not delete_watchlist(wl_id):
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return {"ok": True}
+
+
+@app.post("/api/watchlists/{wl_id}/tickers")
+def add_to_watchlist(wl_id: str, body: WatchlistTickerAdd):
+    ticker = body.ticker.strip().upper()
+    result = wl_add_ticker(wl_id, ticker, body.name)
+    if not result:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return result
+
+
+@app.delete("/api/watchlists/{wl_id}/tickers/{ticker}")
+def remove_from_watchlist(wl_id: str, ticker: str):
+    result = wl_remove_ticker(wl_id, ticker.upper())
+    if not result:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return result
+
+
+@app.get("/api/watchlists/membership/{ticker}")
+def watchlist_membership(ticker: str):
+    """Return IDs of watchlists that contain this ticker."""
+    return ticker_watchlist_ids(ticker.upper())
+
+
+# ------------------------------------------------------------------ #
 #  Cache management                                                   #
 # ------------------------------------------------------------------ #
 
 @app.get("/api/cache/stats")
 def cache_stats():
-    return cache.stats()
+    stats = cache.stats()
+    now = time.time()
+    stats["metrics_entries"] = sum(
+        1 for k, v in list(cache._data.items())
+        if k.startswith("metrics:") and (now - v["ts"]) < cache.ttl
+    )
+    return stats
 
 
 @app.delete("/api/cache")

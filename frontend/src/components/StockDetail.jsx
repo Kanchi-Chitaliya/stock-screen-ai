@@ -10,7 +10,7 @@ import {
   PriceChart, RevenueChart, MarginsChart, FCFChart, DebtChart, EPSChart,
   ROICChart, SharesChart,
 } from './MetricCharts.jsx'
-import { ArrowLeft, ExternalLink, RefreshCw, Bell } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, Bell, Bookmark } from 'lucide-react'
 
 const CHART_TABS = [
   { key: 'price',    label: 'Price' },
@@ -209,7 +209,7 @@ function SentimentCard({ data, loading, error, onViewFull, onRetry }) {
   )
 }
 
-export default function StockDetail({ ticker, onBack }) {
+export default function StockDetail({ ticker, onBack, onOpenWatchlist }) {
   const [stock, setStock] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -281,6 +281,15 @@ export default function StockDetail({ ticker, onBack }) {
           <ArrowLeft size={16} /> Back to Screener
         </button>
         <div className="flex items-center gap-3">
+          {onOpenWatchlist && stock && (
+            <button
+              onClick={() => onOpenWatchlist(stock.symbol, stock.name)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-400 transition-colors"
+              title="Add to watchlist"
+            >
+              <Bookmark size={13} /> Watchlist
+            </button>
+          )}
           <button
             onClick={() => setShowAlertForm(v => !v)}
             className={`flex items-center gap-1.5 text-xs transition-colors ${showAlertForm ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}`}

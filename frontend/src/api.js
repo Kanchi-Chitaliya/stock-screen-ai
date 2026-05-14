@@ -106,6 +106,40 @@ export const api = {
   getUpcomingEarnings: (days = 30) =>
     fetchJSON(`${BASE}/earnings/upcoming?days=${days}`),
 
+  // ── Watchlists ───────────────────────────────────────────────────
+  getWatchlists: () =>
+    fetchJSON(`${BASE}/watchlists`),
+
+  createWatchlist: (name) =>
+    fetchJSON(`${BASE}/watchlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+
+  renameWatchlist: (id, name) =>
+    fetchJSON(`${BASE}/watchlists/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteWatchlist: (id) =>
+    fetchJSON(`${BASE}/watchlists/${id}`, { method: 'DELETE' }),
+
+  addToWatchlist: (wlId, ticker, name = '') =>
+    fetchJSON(`${BASE}/watchlists/${wlId}/tickers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, name }),
+    }),
+
+  removeFromWatchlist: (wlId, ticker) =>
+    fetchJSON(`${BASE}/watchlists/${wlId}/tickers/${ticker}`, { method: 'DELETE' }),
+
+  getWatchlistMembership: (ticker) =>
+    fetchJSON(`${BASE}/watchlists/membership/${ticker}`),
+
   // ── Alerts ────────────────────────────────────────────────────────
   searchStocks: (q) =>
     fetchJSON(`${BASE}/search?q=${encodeURIComponent(q)}`),

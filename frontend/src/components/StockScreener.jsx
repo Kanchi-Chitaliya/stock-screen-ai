@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { api, fmt, fmtLarge, colorForPE, colorForGrowth, grahamScoreColor } from '../api.js'
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, RefreshCw, Filter, Database, Zap } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Filter, Database, Zap, Bookmark } from 'lucide-react'
 import EarningsTracker from './EarningsTracker.jsx'
+import WatchlistWidget from './WatchlistWidget.jsx'
 
 const COLS = [
   { key: 'symbol',        label: 'Ticker',        align: 'left' },
@@ -25,7 +26,7 @@ function SortIcon({ col, sortKey, sortDir }) {
     : <ArrowDown size={12} className="text-blue-400 ml-1 inline" />
 }
 
-export default function StockScreener({ onSelectStock }) {
+export default function StockScreener({ onSelectStock, onOpenWatchlist }) {
   const [stocks, setStocks] = useState([])
   const [progress, setProgress] = useState({ processed: 0, total: 0, errors: 0 })
   const [loading, setLoading] = useState(false)
@@ -34,8 +35,10 @@ export default function StockScreener({ onSelectStock }) {
   const [index, setIndex] = useState('top_25')
   const [sortKey, setSortKey] = useState('market_cap')
   const [sortDir, setSortDir] = useState('desc')
-  const [search, setSearch] = useState('')
   const [sectorFilter, setSectorFilter] = useState('All')
+  const [grahamMin, setGrahamMin]       = useState(0)
+  const [aiMin, setAiMin]               = useState(0)
+  const [watchlistMap, setWatchlistMap] = useState({}) // symbol → true if in any watchlist
   const esRef = useRef(null)
 
   const startStream = useCallback((idx) => {
@@ -78,13 +81,36 @@ export default function StockScreener({ onSelectStock }) {
     else { setSortKey(key); setSortDir('desc') }
   }
 
+  // Load watchlist membership for starred icons
+  const refreshWatchlistMap = useCallback(() => {
+    api.getWatchlists().then(wls => {
+      const map = {}
+      wls.forEach(wl => wl.tickers.forEach(t => { map[t.symbol] = true }))
+      setWatchlistMap(map)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => { refreshWatchlistMap() }, [refreshWatchlistMap])
+
+  const handleStarClick = useCallback((e, s) => {
+    e.stopPropagation()
+    // If already in a watchlist, open the panel; otherwise open panel to add
+    onOpenWatchlist(s.symbol, s.name)
+  }, [onOpenWatchlist])
+
   const sectors = ['All', ...new Set(stocks.map(s => s.sector).filter(Boolean).sort())]
 
   const filtered = stocks
     .filter(s => {
-      const q = search.toLowerCase()
-      return (s.symbol?.toLowerCase().includes(q) || s.name?.toLowerCase().includes(q))
-        && (sectorFilter === 'All' || s.sector === sectorFilter)
+      if (sectorFilter !== 'All' && s.sector !== sectorFilter) return false
+      if (grahamMin > 0) {
+        const gs = s.graham_score?.score
+        if (gs == null || gs < grahamMin) return false
+      }
+      if (aiMin > 0) {
+        if (s.ai_score == null || s.ai_score < aiMin) return false
+      }
+      return true
     })
     .sort((a, b) => {
       let av = a[sortKey], bv = b[sortKey]
@@ -198,16 +224,40 @@ export default function StockScreener({ onSelectStock }) {
             </select>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-2 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Search ticker / name…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded pl-8 pr-3 py-1.5 w-52 focus:outline-none focus:border-blue-500"
-            />
+          {/* Graham score filter */}
+          <div className="flex items-center gap-1 border border-gray-700 rounded-lg overflow-hidden">
+            <span className="px-2 text-[11px] text-gray-500 font-medium bg-gray-800/60 py-1.5 border-r border-gray-700">Graham</span>
+            {[0, 5, 7, 8].map(v => (
+              <button
+                key={v}
+                onClick={() => setGrahamMin(v)}
+                className={`px-2 py-1.5 text-xs transition-colors ${
+                  grahamMin === v
+                    ? 'bg-emerald-700 text-white font-semibold'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                {v === 0 ? 'All' : `≥${v}`}
+              </button>
+            ))}
+          </div>
+
+          {/* AI score filter */}
+          <div className="flex items-center gap-1 border border-gray-700 rounded-lg overflow-hidden">
+            <span className="px-2 text-[11px] text-gray-500 font-medium bg-gray-800/60 py-1.5 border-r border-gray-700">AI</span>
+            {[0, 5, 7, 8].map(v => (
+              <button
+                key={v}
+                onClick={() => setAiMin(v)}
+                className={`px-2 py-1.5 text-xs transition-colors ${
+                  aiMin === v
+                    ? 'bg-blue-700 text-white font-semibold'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`}
+              >
+                {v === 0 ? 'All' : `≥${v}`}
+              </button>
+            ))}
           </div>
 
           {/* Refresh */}
@@ -221,6 +271,9 @@ export default function StockScreener({ onSelectStock }) {
           </button>
         </div>
       </div>
+
+      {/* Watchlist */}
+      <WatchlistWidget onSelectStock={onSelectStock} onOpenWatchlist={onOpenWatchlist} />
 
       {/* Earnings Calendar */}
       <EarningsTracker onSelectStock={onSelectStock} />
@@ -260,17 +313,23 @@ export default function StockScreener({ onSelectStock }) {
       {!loading && stocks.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
           <p className="text-xs text-gray-500">
-            {filtered.length} of {stocks.length} stocks · click a row to deep-dive
+            {filtered.length} of {stocks.length} stocks
+            {(grahamMin > 0 || aiMin > 0) && (
+              <span className="ml-1 text-gray-600">
+                · filtered by{grahamMin > 0 ? ` Graham ≥${grahamMin}` : ''}{grahamMin > 0 && aiMin > 0 ? ' &' : ''}{aiMin > 0 ? ` AI ≥${aiMin}` : ''}
+              </span>
+            )}
+            {filtered.length === stocks.length && !grahamMin && !aiMin && ' · click a row to deep-dive'}
           </p>
           {cacheStats && (
             <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
-              cacheStats.valid_entries > 100
+              cacheStats.metrics_entries > 100
                 ? 'bg-emerald-950/50 border-emerald-800 text-emerald-400'
                 : 'bg-yellow-950/50 border-yellow-800 text-yellow-400'
             }`}>
-              {cacheStats.valid_entries > 100
-                ? <><Zap size={11} /> {cacheStats.valid_entries} cached</>
-                : <><Database size={11} /> {cacheStats.valid_entries} cached</>
+              {cacheStats.metrics_entries > 100
+                ? <><Zap size={11} /> {cacheStats.metrics_entries} stocks cached</>
+                : <><Database size={11} /> {cacheStats.metrics_entries} stocks cached</>
               }
             </span>
           )}
@@ -292,6 +351,7 @@ export default function StockScreener({ onSelectStock }) {
                   <SortIcon col={col.key} sortKey={sortKey} sortDir={sortDir} />
                 </th>
               ))}
+              <th className="px-3 py-3 w-8" />
             </tr>
           </thead>
           <tbody>
@@ -299,7 +359,7 @@ export default function StockScreener({ onSelectStock }) {
               <tr
                 key={s.symbol}
                 onClick={() => onSelectStock(s.symbol)}
-                className={`border-b border-gray-800/50 cursor-pointer transition-colors hover:bg-blue-950/30 ${i % 2 === 0 ? 'bg-[#0a0e17]' : 'bg-gray-900/30'}`}
+                className={`border-b border-gray-800/50 cursor-pointer transition-colors hover:bg-blue-950/30 group ${i % 2 === 0 ? 'bg-[#0a0e17]' : 'bg-gray-900/30'}`}
               >
                 {COLS.map(col => (
                   <td
@@ -309,6 +369,15 @@ export default function StockScreener({ onSelectStock }) {
                     {cellVal(s, col.key)}
                   </td>
                 ))}
+                <td className="px-3 py-2.5 w-8">
+                  <button
+                    onClick={e => handleStarClick(e, s)}
+                    className={`p-0.5 transition-colors ${watchlistMap[s.symbol] ? 'text-blue-400' : 'text-gray-700 hover:text-blue-400 opacity-0 group-hover:opacity-100'}`}
+                    title="Add to watchlist"
+                  >
+                    <Bookmark size={13} fill={watchlistMap[s.symbol] ? 'currentColor' : 'none'} />
+                  </button>
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && loading && (

@@ -39,6 +39,7 @@ env/
 
 # User data
 backend/alerts.json
+backend/watchlists.json
 
 # IDE
 .vscode/
